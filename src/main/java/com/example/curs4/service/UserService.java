@@ -238,7 +238,7 @@ public class UserService {
             log.info("Удалено деклараций пользователя: {}", declarationsDeleted);
 
             int vehiclesDeleted = entityManager.createNativeQuery(
-                            "DELETE FROM vehicles WHERE client_id = :userId")
+                            "DELETE FROM vehicles WHERE driver_id = :userId")
                     .setParameter("userId", id)
                     .executeUpdate();
             log.info("Удалено транспорта пользователя: {}", vehiclesDeleted);

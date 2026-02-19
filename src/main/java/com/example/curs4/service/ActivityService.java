@@ -143,13 +143,6 @@ public class ActivityService {
     }
 
     @Transactional(readOnly = true)
-    public List<ActivityDTO> getActivitiesByDateRange(LocalDateTime startDate, LocalDateTime endDate) {
-        return activityRepository.findByActivityDateBetweenOrderByActivityDateDesc(startDate, endDate).stream()
-                .map(activityMapper::toDto)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
     public List<ActivityDTO> getActivitiesByUserAndDateRange(Long userId, LocalDateTime startDate, LocalDateTime endDate) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException("Пользователь не найден"));

@@ -72,7 +72,7 @@ public class UserController {
         return ResponseEntity.ok(user);
     }
 
-    @Operation(summary = "Обновить пользователя (только админ)")
+    @Operation(summary = "Обновить пользователя")
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'CLIENT', 'DRIVER')")
     public ResponseEntity<UserDTO> updateUser(@PathVariable Long id, @RequestBody UserDTO dto) {
@@ -97,7 +97,7 @@ public class UserController {
         }
     }
 
-    @Operation(summary = "Удалить пользователя (только админ)")
+    @Operation(summary = "Удалить пользователя")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'CLIENT', 'DRIVER')")
     public ResponseEntity<Void> deleteUser(@PathVariable Long id) {

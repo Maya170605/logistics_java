@@ -15,6 +15,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -28,33 +29,67 @@ import java.util.Map;
 public class ActivityController {
 
     private final ActivityService activityService;
-    private final SecurityService securityService; // ДОБАВЬТЕ ЭТО ПОЛЕ
+    private final SecurityService securityService;
 
     @Operation(summary = "Создать активность")
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'CLIENT', 'DRIVER')")
+    @PreAuthorize("isAuthenticated()")  // Разрешить ВСЕМ ролям
     public ResponseEntity<ActivityDTO> createActivity(@Valid @RequestBody ActivityDTO dto) {
         log.info("Создание активности для пользователя ID: {}", dto.getUserId());
         ActivityDTO saved = activityService.createActivity(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
-    @Operation(summary = "Создать активность по имени пользователя")
     @PostMapping("/user/{username}")
-    @PreAuthorize("hasAnyRole('CLIENT', 'ADMIN') and (@securityService.isCurrentUser(#username, authentication) or hasRole('ADMIN'))")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ActivityDTO> createActivityForUser(
             @PathVariable String username,
+            @RequestBody Map<String, String> request,
+            Authentication authentication) {
+
+        log.info("Создание активности для пользователя: {}, запрос от: {}",
+                username, authentication != null ? authentication.getName() : "null");
+        log.info("Данные запроса: {}", request);
+
+        String description = request.get("description");
+        if (description == null || description.trim().isEmpty()) {
+            log.warn("Описание активности пустое");
+            return ResponseEntity.badRequest().build();
+        }
+
+        try {
+            ActivityDTO saved = activityService.createActivityForUser(username, description);
+            log.info("Активность успешно создана: ID={}", saved.getId());
+            return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+        } catch (Exception e) {
+            log.error("Ошибка создания активности для пользователя {}: {}", username, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @Operation(summary = "Создать активность по ID пользователя")
+    @PostMapping("/user/id/{userId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ActivityDTO> createActivityForUserId(
+            @PathVariable Long userId,
             @RequestBody Map<String, String> request) {
 
         String description = request.get("description");
-        log.info("Создание активности для пользователя: {}", username);
-        ActivityDTO saved = activityService.createActivityForUser(username, description);
+        log.info("Создание активности для пользователя ID: {}", userId);
+
+        // Получаем пользователя по ID
+        ActivityDTO dto = new ActivityDTO();
+        dto.setUserId(userId);
+        dto.setDescription(description);
+        dto.setActivityDate(LocalDateTime.now());
+
+        ActivityDTO saved = activityService.createActivity(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
     @Operation(summary = "Получить активность по ID")
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('CLIENT', 'ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ActivityDTO> getActivityById(@PathVariable Long id) {
         log.info("Получение активности по ID: {}", id);
         ActivityDTO activity = activityService.getActivityById(id);
@@ -63,7 +98,7 @@ public class ActivityController {
 
     @Operation(summary = "Получить все активности")
     @GetMapping
-    @PreAuthorize("hasAnyRole('CLIENT','ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<ActivityDTO>> getAllActivities() {
         log.info("Получение всех активностей");
         List<ActivityDTO> activities = activityService.getAllActivities();
@@ -72,7 +107,7 @@ public class ActivityController {
 
     @Operation(summary = "Получить активности по пользователю")
     @GetMapping("/user/{userId}")
-    @PreAuthorize("hasAnyRole('CLIENT','ADMIN') or @securityService.isCurrentUser(#userId, authentication)")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<ActivityDTO>> getActivitiesByUser(@PathVariable Long userId) {
         log.info("Получение активностей для пользователя ID: {}", userId);
         List<ActivityDTO> activities = activityService.getActivitiesByUserId(userId);
@@ -81,7 +116,7 @@ public class ActivityController {
 
     @Operation(summary = "Получить последние активности пользователя")
     @GetMapping("/user/{userId}/recent")
-    @PreAuthorize("hasAnyRole('CLIENT','ADMIN') or @securityService.isCurrentUser(#userId, authentication)")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<ActivityDTO>> getRecentActivitiesByUser(
             @PathVariable Long userId,
             @RequestParam(defaultValue = "5") int limit) {
@@ -98,7 +133,7 @@ public class ActivityController {
 
     @Operation(summary = "Получить активности пользователя с пагинацией")
     @GetMapping("/user/{userId}/page")
-    @PreAuthorize("hasAnyRole('CLIENT','ADMIN') or @securityService.isCurrentUser(#userId, authentication)")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Page<ActivityDTO>> getActivitiesByUserWithPagination(
             @PathVariable Long userId,
             @RequestParam(defaultValue = "0") int page,
@@ -110,21 +145,9 @@ public class ActivityController {
         return ResponseEntity.ok(activities);
     }
 
-    @Operation(summary = "Получить активности по диапазону дат")
-    @GetMapping("/date-range")
-    @PreAuthorize("hasAnyRole('CLIENT','ADMIN')")
-    public ResponseEntity<List<ActivityDTO>> getActivitiesByDateRange(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
-
-        log.info("Получение активностей с {} по {}", startDate, endDate);
-        List<ActivityDTO> activities = activityService.getActivitiesByDateRange(startDate, endDate);
-        return ResponseEntity.ok(activities);
-    }
-
     @Operation(summary = "Обновить активность")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('CLIENT', 'ADMIN') and (hasRole('ADMIN') or @activityService.isActivityOwner(#id, authentication))")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ActivityDTO> updateActivity(@PathVariable Long id,
                                                       @Valid @RequestBody ActivityDTO dto) {
         log.info("Обновление активности ID: {}", id);
@@ -134,7 +157,7 @@ public class ActivityController {
 
     @Operation(summary = "Удалить активность")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('CLIENT', 'ADMIN') and (hasRole('ADMIN') or @activityService.isActivityOwner(#id, authentication))")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> deleteActivity(@PathVariable Long id) {
         log.info("Удаление активности ID: {}", id);
         activityService.deleteActivity(id);
@@ -143,7 +166,7 @@ public class ActivityController {
 
     @Operation(summary = "Удалить все активности пользователя")
     @DeleteMapping("/user/{userId}")
-    @PreAuthorize("hasRole('ADMIN') or @securityService.isCurrentUser(#userId, authentication)")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> deleteAllActivitiesByUser(@PathVariable Long userId) {
         log.info("Удаление всех активностей пользователя ID: {}", userId);
         activityService.deleteAllActivitiesByUser(userId);
@@ -152,7 +175,7 @@ public class ActivityController {
 
     @Operation(summary = "Получить статистику по пользователю")
     @GetMapping("/user/{userId}/stats")
-    @PreAuthorize("hasAnyRole('CLIENT','ADMIN') or @securityService.isCurrentUser(#userId, authentication)")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> getUserStats(@PathVariable Long userId) {
         log.info("Получение статистики активностей для пользователя ID: {}", userId);
 
